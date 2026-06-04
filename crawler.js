@@ -123,9 +123,12 @@ async function acceptCookies(page) {
         try {
             const btn = await page.$(sel);
             if (btn) {
-                await btn.click();
-                await page.waitForTimeout(500);
-                return true;
+                const visible = await btn.isVisible().catch(() => false);
+                if (visible) {
+                    await btn.click({ timeout: 3000 });
+                    await page.waitForTimeout(500);
+                    return true;
+                }
             }
         } catch (e) { /* try next */ }
     }
@@ -269,11 +272,11 @@ async function runCrawl() {
                 if (upsertResult.isNew) totalNew++;
                 if (upsertResult.isChanged) totalChanged++;
 
-                db.addSessionProduct(sessionId, upsertResult.id, upsertResult.isNew, upsertResult.isChanged, result.subcategory);
+                db.addSessionProduct(sessionId, upsertResult.id, upsertResult.isNew, result.subcategory);
 
                 if (upsertResult.changes && upsertResult.changes.length > 0) {
                     for (const change of upsertResult.changes) {
-                        db.addProductChange(sessionId, upsertResult.id, change.type, change.field, change.oldVal, change.newVal, now);
+                        db.addProductChange(sessionId, upsertResult.id, change.change_type, change.field_name, change.old_value, change.new_value);
                     }
                 }
 
