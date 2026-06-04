@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>产品 - 电商爬虫监测</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">EC</div>
+                <div class="logo-text">电商监测</div>
+            </div>
+            <nav class="sidebar-nav">
+                <ul>
+                    <li><a href="dashboard.html"><span data-icon="dashboard"></span> <span>仪表盘</span></a></li>
+                    <li><a href="products.html" class="active"><span data-icon="products"></span> <span>产品</span></a></li>
+                    <li><a href="index.html"><span data-icon="history"></span> <span>检测历史</span></a></li>
+                    <li><a href="settings.html"><span data-icon="settings"></span> <span>设置</span></a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <div class="page-header">
+                <h1>产品列表</h1>
+            </div>
+
+            <div class="search-bar">
+                <input type="text" id="search-input" placeholder="搜索产品名称或ID...">
+                <select id="category-filter">
+                    <option value="">全部分类</option>
+                </select>
+            </div>
+
+            <div class="card">
+                <div class="card-body" style="padding:0">
+                    <table class="data-table" id="products-table">
+                        <thead>
+                            <tr>
+                                <th>图片</th>
+                                <th>名称</th>
+                                <th>ID</th>
+                                <th>分类</th>
+                                <th>首次发现</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Products loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        document.querySelectorAll('[data-icon]').forEach(el => {
+            const name = el.getAttribute('data-icon');
+            if (ICONS[name]) el.innerHTML = ICONS[name];
+        });
+        setActiveNav();
+
+        let allCategories = [];
+
+        async function loadProducts() {
+            const search = document.getElementById('search-input').value;
+            const category = document.getElementById('category-filter').value;
+            try {
+                const { products, categories } = await api(`/products?search=${encodeURIComponent(search)}&category=${encodeURIComponent(category)}`);
+                allCategories = categories;
+                updateCategoryFilter();
+
+                const tbody = document.querySelector('#products-table tbody');
+                if (!products.length) {
+                    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted)">无产品数据</td></tr>`;
+                    return;
+                }
+                tbody.innerHTML = products.map(p => `
+                    <tr>
+                        <td><img src="${p.image_url ? '/api/proxy/image?url=' + encodeURIComponent(p.image_url) : ''}" alt="" onerror="this.style.display='none'"></td>
+                        <td>${p.name}</td>
+                        <td>${p.external_id}</td>
+                        <td>${p.category || '-'}</td>
+                        <td>${formatDateShort(p.first_seen_at)}</td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function updateCategoryFilter() {
+            const select = document.getElementById('category-filter');
+            const current = select.value;
+            let html = '<option value="">全部分类</option>';
+            for (const cat of allCategories) {
+                html += `<option value="${cat}" ${cat === current ? 'selected' : ''}>${cat}</option>`;
+            }
+            select.innerHTML = html;
+        }
+
+        document.getElementById('search-input').addEventListener('input', debounce(loadProducts, 300));
+        document.getElementById('category-filter').addEventListener('change', loadProducts);
+
+        function debounce(fn, ms) {
+            let t;
+            return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+        }
+
+        loadProducts();
+    </script>
+</body>
+</html>

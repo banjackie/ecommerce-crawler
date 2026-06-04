@@ -1,0 +1,21 @@
+{
+  "name": "ecommerce-crawler",
+  "version": "1.0.0",
+  "description": "电商网站货品爬虫监测系统",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "init": "node -e \"require('./db').init()\"",
+    "crawl": "node -e \"require('./crawler').runCrawl()\"",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3",
+    "playwright": "^1.44.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>检测历史 - 电商爬虫监测</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">EC</div>
+                <div class="logo-text">电商监测</div>
+            </div>
+            <nav class="sidebar-nav">
+                <ul>
+                    <li><a href="dashboard.html"><span data-icon="dashboard"></span> <span>仪表盘</span></a></li>
+                    <li><a href="products.html"><span data-icon="products"></span> <span>产品</span></a></li>
+                    <li><a href="index.html" class="active"><span data-icon="history"></span> <span>检测历史</span></a></li>
+                    <li><a href="settings.html"><span data-icon="settings"></span> <span>设置</span></a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <div class="page-header">
+                <h1>检测历史</h1>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div id="sessions-container">
+                <!-- Sessions will be loaded here -->
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        document.querySelectorAll('[data-icon]').forEach(el => {
+            const name = el.getAttribute('data-icon');
+            if (ICONS[name]) el.innerHTML = ICONS[name];
+        });
+        setActiveNav();
+
+        let trendChart;
+
+        async function loadTrend() {
+            const { trend } = await api('/stats/trend?days=7');
+            const labels = trend.map(t => t.day.slice(5));
+            const dataTotal = trend.map(t => t.total);
+            const dataNew = trend.map(t => t.new_count);
+            const dataPrice = trend.map(t => t.price_changes || 0);
+
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            if (trendChart) trendChart.destroy();
+
+            trendChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: '产品总数',
+                            data: dataTotal,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59,130,246,0.08)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            fill: true,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#3b82f6'
+                        },
+                        {
+                            label: '新增产品',
+                            data: dataNew,
+                            borderColor: '#22c55e',
+                            backgroundColor: 'rgba(34,197,94,0.08)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            fill: true,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#22c55e'
+                        },
+                        {
+                            label: '价格变动',
+                            data: dataPrice,
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245,158,11,0.08)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            fill: true,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#f59e0b'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 12 } } },
+                        y: { beginAtZero: true, ticks: { font: { size: 12 } } }
+                    }
+                }
+            });
+        }
+
+        function changeBadge(type) {
+            const map = {
+                'new': '<span class="badge badge-success">新增</span>',
+                'removed': '<span class="badge badge-danger">下架</span>',
+                'price_changed': '<span class="badge badge-warning">价格变动</span>',
+                'restocked': '<span class="badge badge-info">补货</span>'
+            };
+            return map[type] || `<span class="badge">${type}</span>`;
+        }
+
+        async function loadSessions() {
+            const container = document.getElementById('sessions-container');
+            try {
+                const { sessions } = await api('/sessions');
+                if (!sessions.length) {
+                    container.innerHTML = `
+                        <div class="card">
+                            <div class="empty-state">
+                                <div style="font-size:40px;margin-bottom:12px;">📭</div>
+                                <p>暂无检测记录</p>
+                                <p style="font-size:13px;margin-top:8px;">前往<a href="settings.html" style="color:var(--primary)">设置</a>页面手动触发一次爬取</p>
+                            </div>
+                        </div>`;
+                    return;
+                }
+
+                container.innerHTML = sessions.map(s => {
+                    const subcatCount = s.subcategories_found || 0;
+                    const priceChanges = s.price_changes || 0;
+                    return `
+                    <div class="card session-item" data-session-id="${s.id}">
+                        <div class="session-header" onclick="toggleSession(${s.id})">
+                            <div class="session-date-icon">
+                                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                            </div>
+                            <div class="session-info">
+                                <div class="session-title">${formatDate(s.started_at)}</div>
+                                <div class="session-meta">
+                                    <span style="color:var(--success);font-weight:500;">${s.new_products}</span> 新增
+                                    <span style="margin:0 4px;">·</span>
+                                    ${s.total_products} 产品
+                                    <span style="margin:0 4px;">·</span>
+                                    ${subcatCount} 子分类
+                                    ${priceChanges > 0 ? `<span style="margin:0 4px;">·</span><span style="color:#f59e0b;font-weight:500;">${priceChanges} 价格变动</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="session-tags">
+                                ${s.category_stats.slice(0, 4).map(c => `
+                                    <span class="tag tag-primary">${c.category} ${c.count}</span>
+                                `).join('')}
+                                ${s.category_stats.length > 4 ? `<span class="tag">+${s.category_stats.length - 4}</span>` : ''}
+                            </div>
+                            <span class="badge badge-success">${s.status === 'success' ? '成功' : s.status}</span>
+                            <svg class="toggle-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                        </div>
+                        <div class="session-detail" id="detail-${s.id}">
+                            <div class="detail-tabs">
+                                <button class="tab-btn active" onclick="switchTab(${s.id}, 'products')">产品列表</button>
+                                <button class="tab-btn" onclick="switchTab(${s.id}, 'changes')">变更记录</button>
+                            </div>
+                            <div class="tab-content" id="tab-products-${s.id}">
+                                <!-- Products loaded on expand -->
+                            </div>
+                            <div class="tab-content" id="tab-changes-${s.id}" style="display:none">
+                                <!-- Changes loaded on expand -->
+                            </div>
+                        </div>
+                    </div>
+                `}).join('');
+            } catch (err) {
+                container.innerHTML = `<div class="card"><div class="empty-state">加载失败: ${err.message}</div></div>`;
+            }
+        }
+
+        function switchTab(sessionId, tab) {
+            const detail = document.getElementById(`detail-${sessionId}`);
+            detail.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            detail.querySelectorAll('.tab-content').forEach(tc => tc.style.display = 'none');
+
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tab}-${sessionId}`).style.display = '';
+
+            if (tab === 'changes' && !document.getElementById(`tab-changes-${sessionId}`).dataset.loaded) {
+                loadChanges(sessionId);
+            }
+        }
+
+        async function toggleSession(id) {
+            const item = document.querySelector(`[data-session-id="${id}"]`);
+            const isExpanded = item.classList.contains('expanded');
+
+            if (isExpanded) {
+                item.classList.remove('expanded');
+                return;
+            }
+
+            // Load products if not loaded
+            const productsTab = document.getElementById(`tab-products-${id}`);
+            if (!productsTab.dataset.loaded) {
+                productsTab.innerHTML = '<div style="padding:20px;color:var(--text-muted)">加载中...</div>';
+                try {
+                    const { products } = await api(`/sessions/${id}/products`);
+                    if (!products.length) {
+                        productsTab.innerHTML = '<div style="padding:20px;color:var(--text-muted)">无产品数据</div>';
+                    } else {
+                        productsTab.innerHTML = `<div class="products-grid-expanded">${products.map(p => `
+                            <div class="product-card${p.is_new ? ' product-new' : ''}">
+                                <img class="product-thumb" src="${p.image_url ? '/api/proxy/image?url=' + encodeURIComponent(p.image_url) : ''}" alt="" onerror="this.style.display='none'">
+                                <div class="product-info">
+                                    <div class="product-name" title="${p.name}">${p.name}</div>
+                                    <div class="product-meta">
+                                        <span class="product-id">${p.external_id}</span>
+                                        ${p.brand ? `<span class="tag tag-sm">${p.brand}</span>` : ''}
+                                        ${p.price ? `<span class="product-price">${p.price} €</span>` : ''}
+                                    </div>
+                                    <div class="product-subcategory">${p.subcategory || p.session_subcategory || p.category || ''}</div>
+                                </div>
+                                ${p.is_new ? '<span class="new-badge">NEW</span>' : ''}
+                            </div>
+                        `).join('')}</div>`;
+                    }
+                    productsTab.dataset.loaded = 'true';
+                } catch (err) {
+                    productsTab.innerHTML = `<div style="padding:20px;color:#dc2626">加载失败: ${err.message}</div>`;
+                }
+            }
+
+            item.classList.add('expanded');
+        }
+
+        async function loadChanges(sessionId) {
+            const container = document.getElementById(`tab-changes-${sessionId}`);
+            container.innerHTML = '<div style="padding:20px;color:var(--text-muted)">加载中...</div>';
+            try {
+                const { changes } = await api(`/sessions/${sessionId}/changes`);
+                if (!changes.length) {
+                    container.innerHTML = '<div style="padding:20px;color:var(--text-muted)">本次检测无变更</div>';
+                } else {
+                    container.innerHTML = `<div class="changes-list">${changes.map(c => `
+                        <div class="change-item">
+                            ${changeBadge(c.change_type)}
+                            <div class="change-info">
+                                <span class="change-name">${c.name || c.external_id}</span>
+                                ${c.change_type === 'price_changed' ? `
+                                    <span class="change-detail">
+                                        ${c.field_name}: <span class="price-old">${c.old_value} €</span> → <span class="price-new">${c.new_value} €</span>
+                                    </span>
+                                ` : ''}
+                                ${c.subcategory ? `<span class="change-sub">${c.subcategory}</span>` : ''}
+                            </div>
+                            <span class="change-time">${formatDate(c.detected_at)}</span>
+                        </div>
+                    `).join('')}</div>`;
+                }
+                container.dataset.loaded = 'true';
+            } catch (err) {
+                container.innerHTML = `<div style="padding:20px;color:#dc2626">加载失败: ${err.message}</div>`;
+            }
+        }
+
+        loadTrend();
+        loadSessions();
+    </script>
+</body>
+</html>

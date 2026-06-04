@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设置 - 电商爬虫监测</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">EC</div>
+                <div class="logo-text">电商监测</div>
+            </div>
+            <nav class="sidebar-nav">
+                <ul>
+                    <li><a href="dashboard.html"><span data-icon="dashboard"></span> <span>仪表盘</span></a></li>
+                    <li><a href="products.html"><span data-icon="products"></span> <span>产品</span></a></li>
+                    <li><a href="index.html"><span data-icon="history"></span> <span>检测历史</span></a></li>
+                    <li><a href="settings.html" class="active"><span data-icon="settings"></span> <span>设置</span></a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <div class="page-header">
+                <h1>设置</h1>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>目标品类页 URL</label>
+                        <input type="text" id="source-url" placeholder="https://www.lidl.de/c/...">
+                        <p style="font-size:12px;color:var(--text-muted);margin-top:4px;">系统将自动从此页面提取子分类链接，再逐个爬取子分类下的产品</p>
+                    </div>
+                    <div class="form-group">
+                        <label>定时规则 (Cron)</label>
+                        <input type="text" id="cron-schedule" placeholder="0 4 * * *">
+                        <p style="font-size:12px;color:var(--text-muted);margin-top:4px;">默认每天凌晨 4 点执行</p>
+                    </div>
+                    <button class="btn btn-primary" id="save-btn" onclick="saveSettings()">保存设置</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <h3 style="margin-bottom:16px;font-size:16px;">手动触发</h3>
+                    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">执行两级爬取：品类页 → 子分类 → 产品</p>
+                    <button class="btn btn-primary" id="crawl-btn" onclick="triggerCrawl()">
+                        <span id="crawl-spinner" class="spinner" style="display:none"></span>
+                        <span id="crawl-text">立即爬取</span>
+                    </button>
+                    <p id="crawl-status" style="font-size:13px;margin-top:12px;color:var(--text-muted)"></p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <h3 style="margin-bottom:16px;font-size:16px;">已发现的子分类</h3>
+                    <div id="subcategories-list">
+                        <p style="color:var(--text-muted);font-size:13px;">加载中...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        document.querySelectorAll('[data-icon]').forEach(el => {
+            const name = el.getAttribute('data-icon');
+            if (ICONS[name]) el.innerHTML = ICONS[name];
+        });
+        setActiveNav();
+
+        async function loadSettings() {
+            const settings = await api('/settings');
+            document.getElementById('source-url').value = settings.source_url || '';
+            document.getElementById('cron-schedule').value = settings.cron_schedule || '';
+        }
+
+        async function loadSubcategories() {
+            const container = document.getElementById('subcategories-list');
+            try {
+                const { subcategories } = await api('/subcategories');
+                if (!subcategories.length) {
+                    container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">暂无子分类数据，请先执行一次爬取</p>';
+                    return;
+                }
+                container.innerHTML = `<div class="subcategory-grid">${subcategories.map(sc => `
+                    <div class="subcategory-card">
+                        <div class="subcategory-name">${sc.name}</div>
+                        <div class="subcategory-count">${sc.product_count || 0} 个产品</div>
+                        <div class="subcategory-url">${sc.url}</div>
+                        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">最后发现: ${sc.last_seen_at ? formatDate(sc.last_seen_at) : '-'}</div>
+                    </div>
+                `).join('')}</div>`;
+            } catch (e) {
+                container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">加载失败</p>';
+            }
+        }
+
+        async function saveSettings() {
+            const btn = document.getElementById('save-btn');
+            btn.textContent = '保存中...';
+            try {
+                await api('/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source_url: document.getElementById('source-url').value,
+                        cron_schedule: document.getElementById('cron-schedule').value
+                    })
+                });
+                btn.textContent = '已保存';
+                setTimeout(() => btn.textContent = '保存设置', 1500);
+            } catch (err) {
+                btn.textContent = '保存失败';
+                setTimeout(() => btn.textContent = '保存设置', 1500);
+            }
+        }
+
+        async function triggerCrawl() {
+            const btn = document.getElementById('crawl-btn');
+            const spinner = document.getElementById('crawl-spinner');
+            const text = document.getElementById('crawl-text');
+            const status = document.getElementById('crawl-status');
+
+            spinner.style.display = 'inline-block';
+            text.textContent = '爬取中...';
+            btn.disabled = true;
+            status.textContent = '';
+
+            try {
+                await api('/crawl', { method: 'POST' });
+                status.textContent = '爬取任务已启动，请稍后到检测历史页面查看结果';
+                status.style.color = '#15803d';
+                // Poll for completion
+                pollCrawlStatus();
+            } catch (err) {
+                status.textContent = '启动失败: ' + err.message;
+                status.style.color = '#dc2626';
+                spinner.style.display = 'none';
+                text.textContent = '立即爬取';
+                btn.disabled = false;
+            }
+        }
+
+        function pollCrawlStatus() {
+            const interval = setInterval(async () => {
+                try {
+                    const { isRunning } = await api('/crawl/status');
+                    const status = document.getElementById('crawl-status');
+                    if (!isRunning) {
+                        clearInterval(interval);
+                        document.getElementById('crawl-spinner').style.display = 'none';
+                        document.getElementById('crawl-text').textContent = '立即爬取';
+                        document.getElementById('crawl-btn').disabled = false;
+                        status.textContent = '爬取完成！前往检测历史页面查看结果';
+                        loadSubcategories();
+                    } else {
+                        status.textContent = '爬取进行中...';
+                    }
+                } catch (e) {
+                    clearInterval(interval);
+                }
+            }, 3000);
+        }
+
+        loadSettings();
+        loadSubcategories();
+    </script>
+</body>
+</html>
