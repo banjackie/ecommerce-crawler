@@ -163,7 +163,7 @@
                             </div>
                             <div class="session-tags">
                                 ${s.category_stats.slice(0, 4).map(c => `
-                                    <span class="tag tag-primary">${c.category} ${c.count}</span>
+                                    <span class="tag tag-primary">${t(c.category)} ${c.count}</span>
                                 `).join('')}
                                 ${s.category_stats.length > 4 ? `<span class="tag">+${s.category_stats.length - 4}</span>` : ''}
                             </div>
@@ -172,8 +172,8 @@
                         </div>
                         <div class="session-detail" id="detail-${s.id}">
                             <div class="detail-tabs">
-                                <button class="tab-btn active" onclick="switchTab(${s.id}, 'products')">产品列表</button>
-                                <button class="tab-btn" onclick="switchTab(${s.id}, 'changes')">变更记录</button>
+                                <button class="tab-btn active" onclick="switchTab(event, ${s.id}, 'products')">产品列表</button>
+                                <button class="tab-btn" onclick="switchTab(event, ${s.id}, 'changes')">变更记录</button>
                             </div>
                             <div class="tab-content" id="tab-products-${s.id}">
                                 <!-- Products loaded on expand -->
@@ -189,12 +189,12 @@
             }
         }
 
-        function switchTab(sessionId, tab) {
+        function switchTab(evt, sessionId, tab) {
             const detail = document.getElementById(`detail-${sessionId}`);
             detail.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             detail.querySelectorAll('.tab-content').forEach(tc => tc.style.display = 'none');
 
-            event.target.classList.add('active');
+            evt.currentTarget.classList.add('active');
             document.getElementById(`tab-${tab}-${sessionId}`).style.display = '';
 
             if (tab === 'changes' && !document.getElementById(`tab-changes-${sessionId}`).dataset.loaded) {
@@ -224,13 +224,13 @@
                             <div class="product-card${p.is_new ? ' product-new' : ''}">
                                 <img class="product-thumb" src="${p.image_url ? '/api/proxy/image?url=' + encodeURIComponent(p.image_url) : ''}" alt="" onerror="this.style.display='none'">
                                 <div class="product-info">
-                                    <div class="product-name" title="${p.name}">${p.name}</div>
+                                    <div class="product-name" title="${escHtml(p.name)}">${escHtml(p.name)}</div>
                                     <div class="product-meta">
-                                        <span class="product-id">${p.external_id}</span>
-                                        ${p.brand ? `<span class="tag tag-sm">${p.brand}</span>` : ''}
-                                        ${p.price ? `<span class="product-price">${p.price} €</span>` : ''}
+                                        <span class="product-id">SKU: ${p.external_id}</span>
+                                        ${p.brand ? `<span class="tag tag-sm">${escHtml(p.brand)}</span>` : ''}
+                                        ${p.price ? `<span class="product-price">${p.price}</span>` : ''}
                                     </div>
-                                    <div class="product-subcategory">${p.subcategory || p.session_subcategory || p.category || ''}</div>
+                                    <div class="product-subcategory">${t(p.subcategory || p.session_subcategory || p.category || '')}</div>
                                 </div>
                                 ${p.is_new ? '<span class="new-badge">NEW</span>' : ''}
                             </div>
@@ -263,7 +263,7 @@
                                         ${c.field_name}: <span class="price-old">${c.old_value} €</span> → <span class="price-new">${c.new_value} €</span>
                                     </span>
                                 ` : ''}
-                                ${c.subcategory ? `<span class="change-sub">${c.subcategory}</span>` : ''}
+                                ${c.subcategory ? `<span class="change-sub">${t(c.subcategory)}</span>` : ''}
                             </div>
                             <span class="change-time">${formatDate(c.detected_at)}</span>
                         </div>

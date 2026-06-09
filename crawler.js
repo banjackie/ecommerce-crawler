@@ -235,9 +235,7 @@ async function runCrawl() {
         await catPage.close();
 
         if (subcategories.length === 0) {
-            console.log(`[${sessionId}] No subcategories found, trying source URL as listing page...`);
-            // Treat the source URL itself as a listing page
-            const result = await crawlSubcategory(context, { name: categoryName, url: sourceUrl });
+            console.log(`[${sessionId}] No subcategories found, treating source URL as listing page...`);
             subcategories.push({ name: categoryName, url: sourceUrl });
         }
 
@@ -300,20 +298,20 @@ async function runCrawl() {
             db.addSessionCategoryStats(sessionId, cat, count);
         }
 
-        db.completeSession(sessionId, allProducts.length, totalNew, 'success', { subcategoriesFound: subcategories.length, priceChanges: totalChanged });
-        console.log(`[${sessionId}] Done. Total: ${allProducts.length}, New: ${totalNew}, Changed: ${totalChanged}, Unavailable: ${unavailableCount}, Subcats: ${subcategories.length}`);
+        db.completeSession(sessionId, seenExternalIds.size, totalNew, 'success', { subcategoriesFound: subcategories.length, priceChanges: totalChanged });
+        console.log(`[${sessionId}] Done. Unique: ${seenExternalIds.size}, New: ${totalNew}, Changed: ${totalChanged}, Unavailable: ${unavailableCount}, Subcats: ${subcategories.length}`);
 
         await browser.close();
         isRunning = false;
         return {
             success: true, sessionId,
-            total: allProducts.length, new: totalNew, changed: totalChanged,
+            total: seenExternalIds.size, new: totalNew, changed: totalChanged,
             unavailable: unavailableCount, subcategories: subcategories.length
         };
 
     } catch (error) {
         console.error(`[${sessionId}] Crawl failed:`, error.message);
-        db.completeSession(sessionId, 0, 0, 'failed', 0, 0);
+        db.completeSession(sessionId, 0, 0, 'failed', {});
         if (browser) await browser.close().catch(() => {});
         isRunning = false;
         return { success: false, error: error.message };

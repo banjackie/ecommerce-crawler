@@ -4,10 +4,10 @@
   "description": "电商网站货品爬虫监测系统",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers node server.js",
     "init": "node -e \"require('./db').init()\"",
-    "crawl": "node -e \"require('./crawler').runCrawl()\"",
-    "dev": "nodemon server.js"
+    "crawl": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers node -e \"require('./crawler').runCrawl()\"",
+    "dev": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers nodemon server.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",

@@ -41,7 +41,31 @@ function init() {
             stmt = '';
         }
     }
+
+    // Idempotent migrations: only add columns that don't already exist
+    runMigrations(database);
+
     console.log('Database initialized at', DB_PATH);
+}
+
+function runMigrations(database) {
+    const migrations = [
+        ['products', 'brand', 'TEXT'],
+        ['products', 'old_price', 'TEXT'],
+        ['products', 'rating', 'REAL'],
+        ['products', 'rating_count', 'INTEGER'],
+        ['products', 'description', 'TEXT'],
+        ['products', 'detail_url', 'TEXT'],
+        ['products', 'subcategory', 'TEXT'],
+        ['crawl_sessions', 'subcategories_found', 'INTEGER DEFAULT 0'],
+        ['crawl_sessions', 'price_changes', 'INTEGER DEFAULT 0'],
+    ];
+    for (const [table, col, type] of migrations) {
+        const cols = database.prepare(`PRAGMA table_info(${table})`).all();
+        if (!cols.some(c => c.name === col)) {
+            database.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+        }
+    }
 }
 
 // Settings helpers
@@ -150,10 +174,22 @@ function upsertProduct(externalId, name, imageUrl, category, price, sourceUrl, e
             });
         }
 
-        // Detect re-appearance (was unavailable, now seen again)
-        if (existing.last_seen_at && existing.last_seen_at < now.slice(0, 10)) {
+        // Detect re-appearance (last seen on a previous date — compare YYYY-MM-DD)
+        const today = now.slice(0, 10);
+        const lastSeenDay = (existing.last_seen_at || '').slice(0, 10);
+        if (lastSeenDay && lastSeenDay < today) {
             isChanged = true;
+            changes.push({
+                product_id: existing.id,
+                change_type: 'restocked',
+                field_name: 'last_seen_at',
+                old_value: existing.last_seen_at,
+                new_value: now
+            });
         }
+
+        // Keep existing image if we already have one (don't re-download for existing SKU)
+        const newImage = existing.image_url ? existing.image_url : imageUrl;
 
         getDb().prepare(
             `UPDATE products SET name = ?, image_url = ?, category = ?, price = ?,
@@ -161,7 +197,7 @@ function upsertProduct(externalId, name, imageUrl, category, price, sourceUrl, e
              rating = COALESCE(?, rating), rating_count = COALESCE(?, rating_count),
              description = COALESCE(?, description), detail_url = COALESCE(?, detail_url),
              last_seen_at = ? WHERE id = ?`
-        ).run(name, imageUrl, category, price,
+        ).run(name, newImage, category, price,
              extra.subcategory || null,
              extra.brand || null, extra.oldPrice || null,
              extra.rating || null, extra.ratingCount || null,
@@ -185,7 +221,7 @@ function upsertProduct(externalId, name, imageUrl, category, price, sourceUrl, e
             old_value: null,
             new_value: null
         });
-        return { id: result.lastInsertRowid, isNew: true, changes };
+        return { id: result.lastInsertRowid, isNew: true, isChanged: true, changes };
     }
 }
 
@@ -223,6 +259,20 @@ function getRecentChanges(days = 7) {
     ).all(`-${parseInt(days)}`);
 }
 
+function getRecentChangesCount(days = 7) {
+    return getDb().prepare(
+        `SELECT COUNT(*) as count FROM product_changes
+         WHERE detected_at >= datetime('now', ? || ' days')`
+    ).get(`-${parseInt(days)}`).count;
+}
+
+function getTodayNewCount() {
+    return getDb().prepare(
+        `SELECT COUNT(*) as count FROM products
+         WHERE date(first_seen_at) = date('now')`
+    ).get().count;
+}
+
 // Detect products that disappeared (present in previous crawl but not current)
 function markDisappearedProducts(sessionId, currentExternalIds, sourceUrl) {
     if (!currentExternalIds || currentExternalIds.size === 0) return 0;
@@ -252,7 +302,7 @@ function getSessionProducts(sessionId) {
     ).all(sessionId);
 }
 
-function getProducts(limit = 100, offset = 0, search = '', category = '', subcategory = '') {
+function getProducts(limit = 100, offset = 0, search = '', category = '', subcategory = '', brand = '', sort = 'last_seen_at', order = 'DESC') {
     let sql = 'SELECT * FROM products WHERE 1=1';
     const params = [];
     if (search) {
@@ -267,7 +317,18 @@ function getProducts(limit = 100, offset = 0, search = '', category = '', subcat
         sql += ' AND subcategory = ?';
         params.push(subcategory);
     }
-    sql += ' ORDER BY last_seen_at DESC LIMIT ? OFFSET ?';
+    if (brand) {
+        sql += ' AND brand = ?';
+        params.push(brand);
+    }
+    const allowedSort = ['price', 'name', 'first_seen_at', 'last_seen_at'];
+    const sortCol = allowedSort.includes(sort) ? sort : 'last_seen_at';
+    const sortOrder = order === 'ASC' ? 'ASC' : 'DESC';
+    if (sortCol === 'price') {
+        sql += ` ORDER BY CAST(REPLACE(REPLACE(REPLACE(price, '*', ''), '€', ''), ',', '.') AS REAL) ${sortOrder} LIMIT ? OFFSET ?`;
+    } else {
+        sql += ` ORDER BY ${sortCol} ${sortOrder} LIMIT ? OFFSET ?`;
+    }
     params.push(limit, offset);
     return getDb().prepare(sql).all(...params);
 }
@@ -278,6 +339,10 @@ function getAllCategories() {
 
 function getAllSubcategoryNames() {
     return getDb().prepare('SELECT DISTINCT subcategory FROM products WHERE subcategory IS NOT NULL ORDER BY subcategory').all().map(r => r.subcategory);
+}
+
+function getAllBrandNames() {
+    return getDb().prepare('SELECT DISTINCT brand FROM products WHERE brand IS NOT NULL AND brand != \'\' ORDER BY brand').all().map(r => r.brand);
 }
 
 function getProductCount() {
@@ -322,11 +387,14 @@ module.exports = {
     addProductChange,
     getProductChanges,
     getRecentChanges,
+    getRecentChangesCount,
+    getTodayNewCount,
     markDisappearedProducts,
     getSessionProducts,
     getProducts,
     getAllCategories,
     getAllSubcategoryNames,
+    getAllBrandNames,
     getProductCount,
     getTrend
 };

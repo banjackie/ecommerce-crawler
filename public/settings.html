@@ -91,7 +91,7 @@
                 }
                 container.innerHTML = `<div class="subcategory-grid">${subcategories.map(sc => `
                     <div class="subcategory-card">
-                        <div class="subcategory-name">${sc.name}</div>
+                        <div class="subcategory-name">${t(sc.name)}</div>
                         <div class="subcategory-count">${sc.product_count || 0} 个产品</div>
                         <div class="subcategory-url">${sc.url}</div>
                         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">最后发现: ${sc.last_seen_at ? formatDate(sc.last_seen_at) : '-'}</div>

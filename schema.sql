@@ -83,14 +83,3 @@ CREATE TABLE IF NOT EXISTS settings (
 -- 插入默认配置
 INSERT OR IGNORE INTO settings (key, value) VALUES ('source_url', 'https://www.lidl.de/c/baumarkt-garten/s10067761');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('cron_schedule', '0 4 * * *');
-
--- 迁移：为已有数据库添加新列
-ALTER TABLE products ADD COLUMN brand TEXT;
-ALTER TABLE products ADD COLUMN old_price TEXT;
-ALTER TABLE products ADD COLUMN rating REAL;
-ALTER TABLE products ADD COLUMN rating_count INTEGER;
-ALTER TABLE products ADD COLUMN description TEXT;
-ALTER TABLE products ADD COLUMN detail_url TEXT;
-ALTER TABLE products ADD COLUMN subcategory TEXT;
-ALTER TABLE crawl_sessions ADD COLUMN subcategories_found INTEGER DEFAULT 0;
-ALTER TABLE crawl_sessions ADD COLUMN price_changes INTEGER DEFAULT 0;

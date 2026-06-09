@@ -1,6 +1,36 @@
 // Shared utilities
 const API_BASE = '/api';
 
+// German → Chinese translation map for Lidl subcategories
+const DE_TO_ZH = {
+    'Akkuwerkzeuge': '充电工具',
+    'Elektrowerkzeuge': '电动工具',
+    'Handwerkzeuge': '手动工具',
+    'Gartengeräte': '园艺设备',
+    'Gartenmöbel': '花园家具',
+    'Pflanzen & Blumen': '植物花卉',
+    'Baustoffe': '建筑材料',
+    'Eisenwaren': '五金件',
+    'Sanitär': '卫浴',
+    'Farben & Lacke': '油漆涂料',
+    'Werkstatt & Zubehör': '车间配件',
+    'Sicherheit & Schutz': '安全防护',
+    'Baumarkt & Garten': '建材花园',
+    'Baumarkt': '建材',
+    'Garten': '花园',
+};
+
+function t(deName) {
+    return DE_TO_ZH[deName] || deName;
+}
+
+function escHtml(s) {
+    if (!s) return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
 async function api(path, options = {}) {
     const res = await fetch(API_BASE + path, options);
     if (!res.ok) throw new Error(await res.text());

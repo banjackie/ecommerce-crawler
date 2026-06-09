@@ -56,10 +56,14 @@ app.get('/api/products', (req, res) => {
     const search = req.query.search || '';
     const category = req.query.category || '';
     const subcategory = req.query.subcategory || '';
-    const products = db.getProducts(limit, offset, search, category, subcategory);
+    const brand = req.query.brand || '';
+    const sort = req.query.sort || 'last_seen_at';
+    const order = req.query.order || 'DESC';
+    const products = db.getProducts(limit, offset, search, category, subcategory, brand, sort, order);
     const categories = db.getAllCategories();
     const subcategories = db.getAllSubcategoryNames();
-    res.json({ products, categories, subcategories });
+    const brands = db.getAllBrandNames();
+    res.json({ products, categories, subcategories, brands });
 });
 
 // Get subcategories for a parent URL
@@ -92,17 +96,16 @@ app.get('/api/stats/trend', (req, res) => {
 // Get overview stats
 app.get('/api/stats/overview', (req, res) => {
     const totalProducts = db.getProductCount();
-    const sessions = db.getSessions(1, 0);
-    const todayNew = sessions.length > 0 ? sessions[0].new_products : 0;
+    const todayNew = db.getTodayNewCount();
     const totalSessions = db.getDb().prepare('SELECT COUNT(*) as count FROM crawl_sessions WHERE status = ?').get('success').count;
     const subcats = db.getAllSubcategories();
-    const recentChanges = db.getRecentChanges(1);
+    const recentChanges = db.getRecentChangesCount(7);
     res.json({
         totalProducts,
         todayNew,
         totalSessions,
         totalSubcategories: subcats.length,
-        recentChanges: recentChanges.length
+        recentChanges
     });
 });
 
@@ -139,18 +142,42 @@ app.post('/api/settings', (req, res) => {
     res.json({ message: 'Settings updated' });
 });
 
-// Image proxy
+// Image proxy (with host whitelist to prevent SSRF)
+const IMAGE_HOST_ALLOWLIST = [
+    'lidl.de', 'www.lidl.de',
+    'assets.lidl.de', 'imgproxy-retcat.assets.schwarz',
+    'media.s-bol.com'
+];
+
 app.get('/api/proxy/image', async (req, res) => {
     const imageUrl = req.query.url;
     if (!imageUrl) return res.status(400).send('Missing url');
+
+    let parsed;
+    try {
+        parsed = new URL(imageUrl);
+    } catch {
+        return res.status(400).send('Invalid url');
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        return res.status(400).send('Unsupported protocol');
+    }
+    const hostAllowed = IMAGE_HOST_ALLOWLIST.some(h => parsed.hostname === h || parsed.hostname.endsWith('.' + h));
+    if (!hostAllowed) {
+        return res.status(403).send('Host not allowed');
+    }
 
     try {
         const response = await fetch(imageUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
         });
-        const contentType = response.headers.get('content-type');
+        const contentType = response.headers.get('content-type') || 'image/jpeg';
+        if (!contentType.startsWith('image/')) {
+            return res.status(415).send('Not an image');
+        }
         const buffer = await response.arrayBuffer();
-        res.set('Content-Type', contentType || 'image/jpeg');
+        res.set('Content-Type', contentType);
+        res.set('Cache-Control', 'public, max-age=86400');
         res.send(Buffer.from(buffer));
     } catch (e) {
         res.status(500).send('Failed to fetch image');
