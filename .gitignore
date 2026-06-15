@@ -5,3 +5,6 @@ node_modules/
 *.jpg
 .DS_Store
 data/*.db*
+data/replica/
+data/litestream-meta/
+

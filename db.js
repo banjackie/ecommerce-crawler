@@ -6,13 +6,37 @@ const DB_PATH = path.join(__dirname, 'data', 'crawler.db');
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 
 let db;
+let dbIntegrityOk = true;
 
 function getDb() {
     if (!db) {
         db = new Database(DB_PATH);
-        db.pragma('journal_mode = WAL');
+        applyPragmas(db);
     }
     return db;
+}
+
+function applyPragmas(database) {
+    database.pragma('journal_mode = WAL');
+    database.pragma('synchronous = NORMAL');
+    database.pragma('busy_timeout = 5000');
+    database.pragma('foreign_keys = ON');
+    database.pragma('wal_autocheckpoint = 1000');
+    database.pragma('temp_store = MEMORY');
+    database.pragma('cache_size = -64000');
+    database.pragma('mmap_size = 268435456');
+
+    const integrity = database.pragma('integrity_check', { simple: true });
+    if (integrity !== 'ok') {
+        dbIntegrityOk = false;
+        console.error('[db] integrity_check FAILED:', integrity);
+    } else {
+        dbIntegrityOk = true;
+    }
+}
+
+function isIntegrityOk() {
+    return dbIntegrityOk;
 }
 
 function init() {
@@ -22,6 +46,10 @@ function init() {
     }
 
     const database = getDb();
+
+    if (!dbIntegrityOk) {
+        throw new Error('Database integrity check failed. Run `npm run db:repair` to recover.');
+    }
 
     const schema = fs.readFileSync(SCHEMA_PATH, 'utf-8');
     const lines = schema.split('\n');
@@ -396,5 +424,31 @@ module.exports = {
     getAllSubcategoryNames,
     getAllBrandNames,
     getProductCount,
-    getTrend
+    getTrend,
+    close,
+    isIntegrityOk
 };
+
+let shutdownRegistered = false;
+function close() {
+    if (!db) return;
+    try {
+        db.pragma('wal_checkpoint(TRUNCATE)');
+        db.close();
+        db = null;
+    } catch (e) {
+        console.error('[db] error during close:', e.message);
+    }
+}
+
+if (!shutdownRegistered) {
+    shutdownRegistered = true;
+    for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+        process.on(sig, () => {
+            console.log(`[db] received ${sig}, closing database...`);
+            close();
+            process.exit(0);
+        });
+    }
+    process.on('exit', () => { if (db) close(); });
+}

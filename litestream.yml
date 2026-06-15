@@ -1,0 +1,28 @@
+# Litestream configuration for ecommerce-crawler SQLite backup
+# Docs: https://litestream.io/reference/config/
+
+# This file configures continuous replication of the SQLite database
+# to one or more backup targets. The default below is a local replica
+# for development safety. For production, uncomment the S3 replica
+# block and fill in the credentials.
+
+dbs:
+  - path: data/crawler.db
+    replicas:
+
+      # Local replica for dev (immediate safety net)
+      - path: data/replica/crawler.db
+        retention: 24h
+        snapshot-interval: 1h
+
+      # Production: S3 backup (uncomment + fill in credentials)
+      # - name: s3
+      #   type: s3
+      #   bucket: YOUR_BUCKET_NAME
+      #   path: ecommerce-crawler
+      #   endpoint: s3.amazonaws.com
+      #   region: eu-central-1
+      #   access-key-id: ${AWS_ACCESS_KEY_ID}
+      #   secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+      #   retention: 168h  # 7 days
+      #   snapshot-interval: 24h

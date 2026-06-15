@@ -7,7 +7,15 @@
     "start": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers node server.js",
     "init": "node -e \"require('./db').init()\"",
     "crawl": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers node -e \"require('./crawler').runCrawl()\"",
-    "dev": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers nodemon server.js"
+    "dev": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers nodemon server.js",
+    "db:repair": "node scripts/repair-db.js",
+    "db:vacuum": "sqlite3 data/crawler.db \"VACUUM;\"",
+    "db:integrity": "sqlite3 data/crawler.db \"PRAGMA integrity_check;\"",
+    "db:info": "node -e \"const db=require('./db'); const d=db.getDb(); console.log({journal:d.pragma('journal_mode',{simple:true}),busy:d.pragma('busy_timeout',{simple:true}),sync:d.pragma('synchronous',{simple:true}),fk:d.pragma('foreign_keys',{simple:true}),integrity:db.isIntegrityOk()})\"",
+    "db:replicate": "PATH=$HOME/.local/bin:$PATH litestream replicate -config litestream.yml",
+    "db:restore": "PATH=$HOME/.local/bin:$PATH litestream restore -config litestream.yml -o data/crawler-restored.db data/crawler.db",
+    "db:inspect": "PATH=$HOME/.local/bin:$PATH litestream ltx -config litestream.yml data/crawler.db",
+    "db:status": "PATH=$HOME/.local/bin:$PATH litestream databases -config litestream.yml"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
